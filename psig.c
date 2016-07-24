@@ -20,18 +20,16 @@ set_random(mpz_t x, unsigned long secbit)
 void
 sig_init(SIGNATURE sig)
 {
-	pairing_init(sig->p, "ECBN254a");
-	point_init(sig->S1, sig->p->g1);
-	point_init(sig->S2, sig->p->g2);
+	field_init(sig->f, "bn254_fp12a");
+	element_init(sig->e, sig->f);
 	mpz_init(sig->r);
 }
 
 void
 sig_clear(SIGNATURE sig)
 {
-	point_clear(sig->S1);
-	point_clear(sig->S2);
-	pairing_clear(sig->p);
+	element_clear(sig->e);
+	field_clear(sig->f);
 	mpz_clear(sig->r);
 }
 
@@ -88,22 +86,31 @@ private_key_clear(PRIVATE_KEY k)
 void
 sign(SIGNATURE sig, PRIVATE_KEY k, char *message)
 {
-	EC_GROUP ec;
+	EC_PAIRING p;
 	EC_POINT M;
+	EC_POINT S1;
+	EC_POINT S2;
 
-	curve_init(ec, "ec_bn254_twa");
-	point_init(M, ec);
+	pairing_init(p, "ECBN254a");
+	point_init(M, p->g2);
+	point_init(S1, p->g1);
+	point_init(S2, p->g2);
 
 	point_map_to_point(M, message, strlen(message), 80);
 
 	set_random(sig->r, 256);
 	/* S1 = rP in G1*/
-	point_mul(sig->S1, sig->r, k->P);
+	point_mul(S1, sig->r, k->P);
 	/* S2 = sM in G2*/
-	point_mul(sig->S2, k->s, M);
+	point_mul(S2, k->s, M);
+
+	/* e(rP, sM) */
+	pairing_map(sig->e, S1, S2, p);
 
 	point_clear(M);
-	curve_clear(ec);
+	point_clear(S1);
+	point_clear(S2);
+	pairing_clear(p);
 }
 
 int
@@ -111,32 +118,28 @@ verify(SIGNATURE sig, PUBLIC_KEY k, char *message)
 {
 	int result = 1;
 
-	Element e1;
-	Element e2;
+	Element e;
 	EC_GROUP ec;
 	EC_POINT tmp;
 	EC_POINT M;
 
+	element_init(e, k->p->g3);
 	curve_init(ec, "ec_bn254_twa");
 	point_init(tmp, ec);
 	point_init(M, ec);
+
 	point_map_to_point(M, message, strlen(message), 80);
 
-	element_init(e1, k->p->g3);
-	element_init(e2, k->p->g3);
-
 	point_mul(tmp, sig->r, M);
-	pairing_map(e1, k->Q, tmp, k->p);
+	/* calc e(Q, rM) */
+	pairing_map(e, k->Q, tmp, k->p);
 
-	pairing_map(e2, sig->S1, sig->S2, sig->p);
-
-	if (element_cmp(e1, e2) == 0)
+	if (element_cmp(e, sig->e) == 0)
 		result = 0;
 	else
 		result = 1;
 
-	element_clear(e1);
-	element_clear(e2);
+	element_clear(e);
 
 	point_clear(tmp);
 	point_clear(M);

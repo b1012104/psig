@@ -6,22 +6,30 @@ int
 main(int argc, char *argv[])
 {
 	char *message = argv[1];
-	PUBLIC_KEY pubkey;
 	PRIVATE_KEY prikey;
+	PUBLIC_KEY pubkey;
 	SIGNATURE sig;
 
-	public_key_init(pubkey);
-	private_key_init(prikey);
-	sig_init(sig);
+	if (argc < 2)
+		return 1;
 
-	printf("message: %s\n", message);
+	private_key_init(prikey);
+	public_key_init(pubkey);
+	sig_init(sig);
 
 	private_key_set_rand(prikey);
 	public_key_set(pubkey, prikey);
 
+	printf("------------ SIGN ------------\n");
+	printf("message: %s\n", message);
 	sign(sig, prikey, message);
 
+	printf("-------- VERIFICATION --------\n");
 	printf("message: %s\n", message);
+	/*
+	 * verification test
+	 */
+	//message[5]++;
 	if (verify(sig, pubkey, message) == 0)
 		printf("Verification Success\n");
 	else

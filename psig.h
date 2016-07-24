@@ -16,9 +16,8 @@ typedef struct private_key_st {
 } PRIVATE_KEY[1];
 
 typedef struct signature_st {
-	EC_PAIRING p;
-	EC_POINT S1;
-	EC_POINT S2;
+	Field f;
+	Element e;
 	mpz_t r;
 } SIGNATURE[1];
 
