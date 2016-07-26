@@ -17,23 +17,35 @@ main(int argc, char *argv[])
 	public_key_init(pubkey);
 	sig_init(sig);
 
-	private_key_set_rand(prikey);
-	public_key_set(pubkey, prikey);
+	keygen(prikey, pubkey);
 
 	printf("------------ SIGN ------------\n");
 	printf("message: %s\n", message);
 	sign(sig, prikey, message);
 
+#ifdef DEBUG
+	printf("---------------- Private Key ----------------\n");
+	gmp_printf("s = %Zd\n", prikey->s);
+	printf("---------------- Public Key  ----------------\n");
+	printf("P ");
+	point_print(pubkey->P);
+	printf("Q ");
+	point_print(pubkey->Q);
+	printf("----------------- Signature -----------------\n");
+	printf("sM ");
+	point_print(sig->sM);
+#endif
+
+#ifdef VERFAILED
+	message[0]++;
+#endif
+
 	printf("-------- VERIFICATION --------\n");
 	printf("message: %s\n", message);
-	/*
-	 * verification test
-	 */
-	//message[5]++;
-	if (verify(sig, pubkey, message) == 0)
+	if (verify(sig, pubkey, message))
 		printf("Verification Success\n");
 	else
-		printf("Verification Failure\n");
+		printf("Verification failed\n");
 
 	public_key_clear(pubkey);
 	private_key_clear(prikey);
