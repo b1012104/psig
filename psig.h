@@ -4,20 +4,21 @@
 #include <gmp.h>
 #include <tepla/ec.h>
 
+extern EC_PAIRING p;
+
 typedef struct public_key_st {
-	EC_PAIRING p;
-	EC_POINT P;
 	EC_POINT Q;
+	Element d;
 } PUBLIC_KEY[1];
 
 typedef struct private_key_st {
-	// EC_PAIRING p;
 	mpz_t s;
+	mpz_t r;
+	EC_POINT P;
 } PRIVATE_KEY[1];
 
 typedef struct signature_st {
-	EC_PAIRING p;
-	EC_POINT sM;
+	EC_POINT R;
 } SIGNATURE[1];
 
 #endif
