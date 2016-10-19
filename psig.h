@@ -5,19 +5,20 @@
 #include <tepla/ec.h>
 
 typedef struct public_key_st {
-	EC_POINT Q;
 	Element d1;
 	Element d2;
 } PUBLIC_KEY[1];
 
 typedef struct private_key_st {
 	mpz_t s;
-	mpz_t r;
+	mpz_t t;
 	EC_POINT P;
+	EC_POINT Q;
 } PRIVATE_KEY[1];
 
 typedef struct signature_st {
 	EC_POINT sP;
+	EC_POINT sQ;
 } SIGNATURE[1];
 
 #endif
