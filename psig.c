@@ -3,7 +3,7 @@
 #include <tepla/ec.h>
 #include <string.h>
 
-extern EC_PAIRING p;
+EC_PAIRING p;
 
 void
 p_init()
@@ -18,14 +18,16 @@ p_clear()
 }
 
 void
-set_random(mpz_t x, unsigned long secbit)
+mpz_set_random(mpz_t x, unsigned long secbit)
 {
-	gmp_randstate_t state;
+	static gmp_randstate_t state;
+	static char ch = 0;
 
-	gmp_randinit_default(state);
-	gmp_randseed_ui(state, (int)time(NULL));
+	if (!ch++) {
+		gmp_randinit_default(state);
+		gmp_randseed_ui(state, (unsigned long int)time(NULL));
+	}
 	mpz_rrandomb(x, state, secbit);
-	gmp_randclear(state);
 }
 
 /*
@@ -34,150 +36,126 @@ set_random(mpz_t x, unsigned long secbit)
 void
 sig_init(SIGNATURE sig)
 {
-	point_init(sig->R, p->g2);
+	point_init(sig->sP, p->g1);
 }
 
 void
 sig_clear(SIGNATURE sig)
 {
-	point_clear(sig->R);
+	point_clear(sig->sP);
 }
 
 /*
  * PUBLIC_KEY
  */
 void
-public_key_init(PUBLIC_KEY k)
+public_key_init(PUBLIC_KEY pubk)
 {
-	point_init(k->Q, p->g1);
-	element_init(k->d, p->g3);
+	point_init(pubk->Q, p->g2);
+	element_init(pubk->d1, p->g3);
+	element_init(pubk->d2, p->g3);
 }
 
 void
-public_key_set(PUBLIC_KEY pubk, PRIVATE_KEY prik, char *message)
+public_key_set(PUBLIC_KEY pubk, PRIVATE_KEY prik, char *msg)
 {
 	EC_POINT tP;
+	point_init(tP, p->g1);
 
-	point_init(tP, p->g2);
-
-	/* Q = sP */
-	point_mul(pubk->Q, prik->P, prik->s);
-	/* use SHA1 */
-	point_map_to_point(tP, message, strlen(message), 80);
-	point_mul(tP, tP, prik->r);
-	/* d = e(P, rH(M)) */
-	pairing_map(pubk->d, prik->P, tP, p);
+	point_random(pubk->Q);
+	/* e(P, Q)^s */
+	point_mul(tP, prik->s, prik->P);
+	pairing_map(pubk->d1, tP, pubk->Q, p);
+	/* e(P, Q)^r */
+	point_mul(tP, prik->r, prik->P);
+	pairing_map(pubk->d2, tP, pubk->Q, p);
 
 	point_clear(tP);
 }
 
 void
-public_key_clear(PUBLIC_KEY k)
+public_key_clear(PUBLIC_KEY pubk)
 {
-	point_clear(k->Q);
-	element_clear(k->d);
+	point_clear(pubk->Q);
+	element_clear(pubk->d1);
+	element_clear(pubk->d2);
 }
 
 /*
  * PRIVATE_KEY
  */
 void
-private_key_init(PRIVATE_KEY k)
+private_key_init(PRIVATE_KEY prik)
 {
-	mpz_init(k->s);
-	mpz_init(k->r);
-	point_init(k->P, p->g1);
+	mpz_init(prik->s);
+	mpz_init(prik->r);
+	point_init(prik->P, p->g1);
 }
 
 void
-private_key_set_random(PRIVATE_KEY k)
+private_key_set_random(PRIVATE_KEY prik)
 {
-	set_random(k->s, 256);
-	set_random(k->r, 256);
-	point_random(k->P);
+	mpz_set_random(prik->s, 256);
+	mpz_set_random(prik->r, 256);
+	point_random(prik->P);
 }
 
 void
-private_key_clear(PRIVATE_KEY k)
+private_key_clear(PRIVATE_KEY prik)
 {
-	mpz_clear(k->s);
-	mpz_clear(k->r);
-	point_clear(k->P);
+	mpz_clear(prik->s);
+	mpz_clear(prik->r);
+	point_clear(prik->P);
 }
 
 /*
  * Keygen, Sign and Verify
  */
-
 void
-keygen(PRIVATE_KEY prik, PUBLIC_KEY pubk)
+keygen(PRIVATE_KEY prik, PUBLIC_KEY pubk, char *msg)
 {
 	private_key_set_random(prik);
-	public_key_set(pubk, prik);
+	public_key_set(pubk, prik, msg);
 }
 
 void
-sign(SIGNATURE sig, PRIVATE_KEY k, char *message)
+sign(SIGNATURE sig, PRIVATE_KEY prik, char *msg)
 {
 	mpz_t tmp;
 	mpz_init(tmp);
 
-	point_map_to_point(sig->R, message, strlen(message), 80);
-	mpz_divexact(tmp, r, s);
-	point_mul(sig->R, k->P, tmp);
+	/* (s/m - r)P */
+	IHF1_SHA(tmp, msg, strlen(msg), *curve_get_order(p->g1), 80);
+	mpz_invert(tmp, tmp, *curve_get_order(p->g1));
+	mpz_mul(tmp, tmp, prik->s);
+	mpz_mod(tmp, tmp, *curve_get_order(p->g1));
+	mpz_sub(tmp, tmp, prik->r);
+	mpz_mod(tmp, tmp, *curve_get_order(p->g1));
+	point_mul(sig->sP, tmp, prik->P);
 
 	mpz_clear(tmp);
 }
 
 int
-verify_public_key(SIGNATURE sig, PUBLIC_KEY k)
+verify(SIGNATURE sig, PUBLIC_KEY pubk, char *msg)
 {
-	int result = 1;
-	Element tmp;
-	element_init(tmp, p->g3);
+	Element d;
+	mpz_t m;
+	int status = 1;
 
-	pairing_map(tmp, k->Q, sig->R, p);
-	if (element_cmp(tmp, k->d) == 0)
-		result = 0;
+	mpz_init(m);
+	element_init(d, p->g3);
 
-	element_clear(tmp);
+	IHF1_SHA(m, msg, strlen(msg), *curve_get_order(p->g1), 80);
+	pairing_map(d, sig->sP, pubk->Q, p);
+	element_mul(d, d, pubk->d2);
+	element_pow(d, d, m);
 
-	return result;
-}
+	if (element_cmp(d, pubk->d1) == 0)
+		status--;
 
-int
-verify_message(SIGNATURE sig, PUBLIC_KEY k, char *message)
-{
-	int result = 1;
-	Element td;
-	Element ver;
-	Element tmp;
-	EC_POINT tP;
+	mpz_clear(m);
+	element_clear(d);
 
-	point_init(tP, p->g2);
-	element_init(td, p->g3);
-	element_init(ver, p->g3);
-	element_init(tmp, p->g3);
-
-	point_map_to_point(tP, message, strlen(message), 80);
-
-	/* e(sP, H(M)) */
-	pairing_map(ver, k->Q ,tP, p);
-
-	/* r/s H(M) + H(M) = (s + r) / s H(M) */
-	point_add(tP, sig->R, tP);
-	/* e(sP, (s+r)/s H(M)) = e(P, H(M))^(s+r)*/
-	pairing_map(td, k->Q, tP, p);
-	element_inv(tmp, k->d);
-	element_mul(td, td, tmp);
-
-	if (element_cmp(td, ver) == 0)
-		result = 0;
-
-	point_clear(tP);
-	element_clear(td);
-	element_clear(ver);
-	element_clear(tmp);
-
-	return result;
+	return status;
 }

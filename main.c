@@ -2,14 +2,12 @@
 #include <stdlib.h>
 #include "psig.h"
 
-extern EC_PAIRING p;
-
 int
 main(int argc, char *argv[])
 {
 	char *message = argv[1];
-	PRIVATE_KEY prikey;
-	PUBLIC_KEY pubkey;
+	PRIVATE_KEY prik;
+	PUBLIC_KEY pubk;
 	SIGNATURE sig;
 
 	if (argc < 2)
@@ -17,22 +15,21 @@ main(int argc, char *argv[])
 
 	p_init();
 
-	private_key_init(prikey);
-	public_key_init(pubkey);
+	private_key_init(prik);
+	public_key_init(pubk);
 	sig_init(sig);
 
-	keygen(prikey, pubkey);
+	keygen(prik, pubk, message);
 
-	sign(sig, prikey, message);
+	sign(sig, prik, message);
 
-	if(verify_public_key(sig, pubkey) != 0)
-		printf("public key is incorrect\n");
+	if (verify(sig, pubk, message) == 0)
+		printf("message is correct\n");
+	else
+		printf("message is incorrect\n");
 
-	if (verify_message(sig, pubkey, message) != 0)
-		printf("message is incorrect");
-
-	public_key_clear(pubkey);
-	private_key_clear(prikey);
+	public_key_clear(pubk);
+	private_key_clear(prik);
 	sig_clear(sig);
 
 	p_clear();
